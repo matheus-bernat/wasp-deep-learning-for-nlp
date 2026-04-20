@@ -274,7 +274,10 @@ class A1RNNModelConfig(PretrainedConfig):
 class A1RNNModel(PreTrainedModel):
     """The neural network model that implements a RNN-based language model."""
     config_class = A1RNNModelConfig
-    
+    # Something to fix version mismatch in the transformers library between the cluster and my PC
+    _tied_weights_keys = []        
+    all_tied_weights_keys = {}    
+
     def __init__(self, config):
         super().__init__(config)
         self.embedding = nn.Embedding(config.vocab_size, config.embedding_size)
@@ -504,21 +507,46 @@ class A1Trainer:
 
 
 if __name__ == '__main__':
-    tokenizer = load_tokenizer()
-    config = A1RNNModelConfig(vocab_size=len(tokenizer), embedding_size=16, hidden_size=32)
-    model = A1RNNModel(config)
+    what_to_do = 'train'
+    # what_to_do = 'test_network'
+    if what_to_do == 'train':
+        tokenizer = load_tokenizer()
+        config = A1RNNModelConfig(vocab_size=len(tokenizer), embedding_size=16, hidden_size=32)
+        model = A1RNNModel(config)
 
-    training_args = TrainingArguments(
-            optim='adamw_torch',
-            use_cpu=True,
-            eval_strategy='epoch',
-            output_dir='trained_output',
-            num_train_epochs=10,
-            per_device_train_batch_size=8,
-            per_device_eval_batch_size=8,
-            learning_rate=0.00005)
+        training_args = TrainingArguments(
+                optim='adamw_torch',
+                use_cpu=True,
+                eval_strategy='epoch',
+                output_dir='trained_output',
+                num_train_epochs=10,
+                per_device_train_batch_size=64,
+                per_device_eval_batch_size=64,
+                learning_rate=0.001)
 
-    dataset = get_dataset(use_subset=False)
+        dataset = get_dataset(use_subset=False)
 
-    trainer = A1Trainer(model, training_args, dataset['train'], dataset['val'], tokenizer)
-    trainer.train()
+        trainer = A1Trainer(model, training_args, dataset['train'], dataset['val'], tokenizer)
+        trainer.train()
+    else:
+        # Load model
+        model = A1RNNModel.from_pretrained('trained_output')
+        print('Model loaded successfully.')
+
+        # Apply the model to the integer encoded text
+        text = "She lives in San"
+        tokenizer = load_tokenizer()
+        input_ids = tokenizer(text, return_tensors='pt').input_ids
+        print('Input IDs:', input_ids)
+        model.eval()
+        with torch.no_grad():
+            output = model(input_ids)
+        print('Logits shape:', output.logits.shape) # (B, N, V)
+
+        # Use argmax to get the most likely next token for each position in the input text.
+        predicted_token_ids = torch.argmax(output.logits, dim=-1) # (B, N)
+        print('Predicted token IDs:', predicted_token_ids)
+        # Convert the predicted token IDs back to strings using the tokenizer's vocabulary.
+        i2t = get_i2t(tokenizer.vocab)
+        predicted_tokens = [[i2t[token_id.item()] for token_id in batch] for batch in predicted_token_ids]
+        print('Predicted tokens:', predicted_tokens)
