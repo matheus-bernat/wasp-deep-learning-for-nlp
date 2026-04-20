@@ -429,7 +429,7 @@ class A1Trainer:
         """Return the device to use for training, depending on the training arguments and the available backends."""
         if self.args.use_cpu:
             return torch.device('cpu')
-        if not self.args.no_cuda and torch.cuda.is_available():
+        if torch.cuda.is_available():
             return torch.device('cuda')
         if torch.mps.is_available():
             return torch.device('mps')
