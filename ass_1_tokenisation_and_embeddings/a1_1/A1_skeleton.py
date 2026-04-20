@@ -426,7 +426,7 @@ class A1Trainer:
         """Return the device to use for training, depending on the training arguments and the available backends."""
         if self.args.use_cpu:
             return torch.device('cpu')
-        if not self.args.no_cuda and torch.cuda.is_available():
+        if torch.cuda.is_available():
             return torch.device('cuda')
         if torch.mps.is_available():
             return torch.device('mps')
@@ -510,7 +510,7 @@ if __name__ == '__main__':
 
     training_args = TrainingArguments(
             optim='adamw_torch',
-            use_cpu=True,
+            use_cpu=False,
             eval_strategy='epoch',
             output_dir='trained_output',
             num_train_epochs=10,
