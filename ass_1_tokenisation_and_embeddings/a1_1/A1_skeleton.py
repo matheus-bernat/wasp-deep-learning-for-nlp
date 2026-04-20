@@ -458,6 +458,8 @@ class A1Trainer:
         # for each training epoch (use args.num_train_epochs here):
         for epoch in range(self.args.num_train_epochs):
 
+            start = time.time()
+
             train_loss = 0
         #   for each batch B in the training set:
             for batch in train_loader:
@@ -485,8 +487,9 @@ class A1Trainer:
                 loss.backward()
                 optimizer.step()
                 train_loss += loss.item()
+            end = time.time()
             train_loss /= len(train_loader)
-            print(f'Epoch {epoch+1}/{self.args.num_train_epochs}, Train Loss: {train_loss:.4f}')
+            print(f'Epoch {epoch+1}/{self.args.num_train_epochs}, Train Loss: {train_loss:.4f}, training time: {(end-start)/60:.2f} minutes.')
 
         #   EVALUATION:
         #   After each epoch, evaluate the model on the validation set and print the validation loss.
@@ -500,7 +503,7 @@ class A1Trainer:
                 output = self.model(input_ids.input_ids, labels)
                 val_loss += output.loss.item()
             val_loss /= len(val_loader)
-            print(f'Epoch {epoch+1}/{self.args.num_train_epochs}, Validation Loss: {val_loss:.4f}')
+            print(f'Epoch {epoch+1}/{self.args.num_train_epochs}, Validation Loss: {val_loss:.4f}, validation time: {(time.time()-end)/60:.2f} minutes.')
 
         print(f'Saving to {args.output_dir}.')
         self.model.save_pretrained(args.output_dir)
