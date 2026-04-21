@@ -207,7 +207,7 @@ class A1Tokenizer:
             return pickle.load(f)
 
 # Create and save the tokenizer.
-# tokenizer = build_tokenizer('train.txt', max_voc_size=10000)
+# tokenizer = build_tokenizer('train.txt', max_voc_size=10000, model_max_length=256)
 # tokenizer.save(f"tokenizer.tok")
 
 # Load the tokenizer.
@@ -386,23 +386,6 @@ def test_model():
 ### Part 4. Training the language model.
 ###
 
-
-## Hint: the following TrainingArguments hyperparameters may be relevant for your implementation:
-#
-# - optim:            What optimizer to use. You can assume that this is set to 'adamw_torch',
-#                     meaning that we use the PyTorch AdamW optimizer.
-# - eval_strategy:    You can assume that this is set to 'epoch', meaning that the model should
-#                     be evaluated on the validation set after each epoch
-# - use_cpu:          Force the trainer to use the CPU; otherwise, CUDA or MPS should be used.
-#                     (In your code, you can just use the provided method select_device.)
-# - learning_rate:    The optimizer's learning rate.
-# - num_train_epochs: The number of epochs to use in the training loop.
-# - per_device_train_batch_size: 
-#                     The batch size to use while training.
-# - per_device_eval_batch_size:
-#                     The batch size to use while evaluating.
-# - output_dir:       The directory where the trained model will be saved.
-
 class A1Trainer:
     """A minimal implementation similar to a Trainer from the HuggingFace library."""
 
@@ -450,13 +433,22 @@ class A1Trainer:
         optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.args.learning_rate)
 
         # TODO: Relevant arguments: args.per_device_train_batch_size, args.per_device_eval_batch_size
-        train_loader = DataLoader(self.train_dataset, batch_size=self.args.per_device_train_batch_size, shuffle=True)
-        val_loader = DataLoader(self.eval_dataset, batch_size=self.args.per_device_eval_batch_size, shuffle=True)
+        train_loader = DataLoader(self.train_dataset, 
+                                  batch_size=self.args.per_device_train_batch_size, 
+                                  num_workers=4, 
+                                  pin_memory=True, 
+                                  shuffle=True)
+        val_loader = DataLoader(self.eval_dataset, 
+                                batch_size=self.args.per_device_eval_batch_size, 
+                                num_workers=4, 
+                                pin_memory=True, 
+                                shuffle=True)
         
         # TODO: Your work here is to implement the training loop.
 
         # for each training epoch (use args.num_train_epochs here):
         for epoch in range(self.args.num_train_epochs):
+            print(f'Starting epoch {epoch+1}/{self.args.num_train_epochs}...')
 
             start = time.time()
 
@@ -491,17 +483,20 @@ class A1Trainer:
             train_loss /= len(train_loader)
             print(f'Epoch {epoch+1}/{self.args.num_train_epochs}, Train Loss: {train_loss:.4f}, training time: {(end-start)/60:.2f} minutes.')
 
+            torch.cuda.empty_cache()
+
         #   EVALUATION:
         #   After each epoch, evaluate the model on the validation set and print the validation loss.
             val_loss = 0
-            for batch in val_loader:
-                input_ids = self.tokenizer(batch['text'], return_tensors='pt', padding=True, truncation=True)
-                labels = input_ids.input_ids.clone()
-                labels[input_ids.attention_mask == 0] = -100
-                input_ids = input_ids.to(device)
-                labels = labels.to(device)
-                output = self.model(input_ids.input_ids, labels)
-                val_loss += output.loss.item()
+            with torch.no_grad():
+                for batch in val_loader:
+                    input_ids = self.tokenizer(batch['text'], return_tensors='pt', padding=True, truncation=True)
+                    labels = input_ids.input_ids.clone()
+                    labels[input_ids.attention_mask == 0] = -100
+                    input_ids = input_ids.to(device)
+                    labels = labels.to(device)
+                    output = self.model(input_ids.input_ids, labels)
+                    val_loss += output.loss.item()
             val_loss /= len(val_loader)
             print(f'Epoch {epoch+1}/{self.args.num_train_epochs}, Validation Loss: {val_loss:.4f}, validation time: {(time.time()-end)/60:.2f} minutes.')
 
@@ -510,10 +505,14 @@ class A1Trainer:
 
 
 if __name__ == '__main__':
-    what_to_do = 'train'
+    # what_to_do = 'train'
     # what_to_do = 'test_network'
+    # what_to_do = 'eval_perplexity'
+    what_to_do = 'nearest_neighbors'
+
     if what_to_do == 'train':
         tokenizer = load_tokenizer()
+        tokenizer.model_max_length = 256
         config = A1RNNModelConfig(vocab_size=len(tokenizer), embedding_size=128, hidden_size=512)
         model = A1RNNModel(config)
 
@@ -522,7 +521,7 @@ if __name__ == '__main__':
                 use_cpu=False,
                 eval_strategy='epoch',
                 output_dir='trained_output',
-                num_train_epochs=20,
+                num_train_epochs=15, #
                 per_device_train_batch_size=256,
                 per_device_eval_batch_size=256,
                 learning_rate=0.001)
@@ -531,7 +530,8 @@ if __name__ == '__main__':
 
         trainer = A1Trainer(model, training_args, dataset['train'], dataset['val'], tokenizer)
         trainer.train()
-    else:
+
+    elif what_to_do == 'test_network':
         # Load model
         model = A1RNNModel.from_pretrained('trained_output')
         print('Model loaded successfully.')
@@ -539,6 +539,7 @@ if __name__ == '__main__':
         # Apply the model to the integer encoded text
         text = "She lives in San"
         tokenizer = load_tokenizer()
+        tokenizer.model_max_length = 256
         input_ids = tokenizer(text, return_tensors='pt').input_ids
         print('Input IDs:', input_ids)
         model.eval()
@@ -553,3 +554,81 @@ if __name__ == '__main__':
         i2t = get_i2t(tokenizer.vocab)
         predicted_tokens = [[i2t[token_id.item()] for token_id in batch] for batch in predicted_token_ids]
         print('Predicted tokens:', predicted_tokens)
+
+        # Output -- SEEMS TO WORK!
+        # (venv) [x_mviei@node069 a1_1]$ python A1_skeleton.py 
+        # Tokenizer loaded. Vocabulary size: 10000.
+        # Input IDs: tensor([[   2,  156, 1898,    9, 1063,    3]])
+        # Logits shape: torch.Size([1, 6, 10000])
+        # Predicted token IDs: tensor([[   4,   18,    9,    4, 2452,    5]])
+        # Predicted tokens: [['the', 'was', 'in', 'the', 'francisco', ',']]
+        # That is, the model predicts:
+        # - <BOS> -> the
+        # - She -> was
+        # - lives -> in
+        # - in -> the
+        # - San -> francisco
+        # - <EOS> -> ,
+
+    elif what_to_do == 'eval_perplexity':
+        # Load model
+        model = A1RNNModel.from_pretrained('trained_output')
+        print('Model loaded successfully.')
+        # Load tokenizer
+        tokenizer = load_tokenizer()
+        tokenizer.model_max_length = 256
+        # Load validation dataset
+        dataset = get_dataset(use_subset=False)
+        val_loader = DataLoader(dataset['val'], batch_size=256, num_workers=4, pin_memory=True, shuffle=False)
+        # Evaluate perplexity on the validation set.
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        model.to(device)
+        model.eval()
+        val_loss = 0
+        perplexity = 0
+        with torch.no_grad():
+            for batch in val_loader:
+                input_ids = tokenizer(batch['text'], return_tensors='pt', padding=True, truncation=True)
+                labels = input_ids.input_ids.clone()
+                labels[input_ids.attention_mask == 0] = -100
+                input_ids = input_ids.to(device)
+                labels = labels.to(device)
+                output = model(input_ids.input_ids, labels)
+                val_loss += output.loss.item()
+                # Perplexity is the exponentiated average loss per token. Common metric for language modeling.
+                # perplexity += torch.exp(output.loss).item()
+        val_loss /= len(val_loader)
+        # Compute perplexity by applying exp to the mean of the cross-entropy loss over the batches in the validation set. 
+        perplexity = torch.exp(torch.tensor(val_loss)).item()
+        print(f'Validation Loss: {val_loss:.4f}, Perplexity: {perplexity:.4f}')
+
+        # Evaluated perplexity: 61.5
+        # (venv) [x_mviei@node069 a1_1]$ python A1_skeleton.py 
+        # Loading weights: 100%|███████████████████████████████████████████████| 7/7 [00:00<00:00, 17220.02it/s]
+        # Model loaded successfully.
+        # Tokenizer loaded. Vocabulary size: 10000.
+        # Train instances: 294118
+        # Validation instances: 35748
+        # Validation Loss: 4.1199, Perplexity: 61.5525
+
+    elif what_to_do == 'nearest_neighbors':
+
+        # Look up the embedding for the test word
+        test_emb = emb.weight[voc[word]]
+    
+        # We'll use a cosine similarity function to find the most similar words.
+        sim_func = nn.CosineSimilarity(dim=1)
+        cosine_scores = sim_func(test_emb, emb.weight)
+        
+        # Find the positions of the highest cosine values.
+        near_nbr = cosine_scores.topk(n_neighbors+1)
+        topk_cos = near_nbr.values[1:]
+        topk_indices = near_nbr.indices[1:]
+        # NB: the first word in the top-k list is the query word itself!
+        # That's why we skip the first position in the code above.
+        
+        # Finally, map word indices back to strings, and put the result in a list.
+        print([ (inv_voc[ix.item()], cos.item()) for ix, cos in zip(topk_indices, topk_cos) ])
+
+
+        
