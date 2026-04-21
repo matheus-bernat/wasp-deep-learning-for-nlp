@@ -514,17 +514,17 @@ if __name__ == '__main__':
     # what_to_do = 'test_network'
     if what_to_do == 'train':
         tokenizer = load_tokenizer()
-        config = A1RNNModelConfig(vocab_size=len(tokenizer), embedding_size=16, hidden_size=32)
+        config = A1RNNModelConfig(vocab_size=len(tokenizer), embedding_size=128, hidden_size=512)
         model = A1RNNModel(config)
 
         training_args = TrainingArguments(
                 optim='adamw_torch',
-                use_cpu=True,
+                use_cpu=False,
                 eval_strategy='epoch',
                 output_dir='trained_output',
-                num_train_epochs=10,
-                per_device_train_batch_size=64,
-                per_device_eval_batch_size=64,
+                num_train_epochs=20,
+                per_device_train_batch_size=256,
+                per_device_eval_batch_size=256,
                 learning_rate=0.001)
 
         dataset = get_dataset(use_subset=False)
