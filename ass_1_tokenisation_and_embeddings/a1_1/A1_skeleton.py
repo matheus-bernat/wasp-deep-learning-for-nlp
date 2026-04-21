@@ -1,4 +1,5 @@
 
+from sklearn import neighbors
 import torch, nltk, pickle
 from torch import nn
 from collections import Counter
@@ -505,10 +506,8 @@ class A1Trainer:
 
 
 if __name__ == '__main__':
-    # what_to_do = 'train'
-    # what_to_do = 'test_network'
-    # what_to_do = 'eval_perplexity'
-    what_to_do = 'nearest_neighbors'
+
+    what_to_do = 'nearest_neighbors' # 'test_network', 'eval_perplexity', 'train'
 
     if what_to_do == 'train':
         tokenizer = load_tokenizer()
@@ -613,22 +612,43 @@ if __name__ == '__main__':
 
     elif what_to_do == 'nearest_neighbors':
 
-        # Look up the embedding for the test word
-        test_emb = emb.weight[voc[word]]
-    
-        # We'll use a cosine similarity function to find the most similar words.
-        sim_func = nn.CosineSimilarity(dim=1)
-        cosine_scores = sim_func(test_emb, emb.weight)
-        
-        # Find the positions of the highest cosine values.
-        near_nbr = cosine_scores.topk(n_neighbors+1)
-        topk_cos = near_nbr.values[1:]
-        topk_indices = near_nbr.indices[1:]
-        # NB: the first word in the top-k list is the query word itself!
-        # That's why we skip the first position in the code above.
-        
-        # Finally, map word indices back to strings, and put the result in a list.
-        print([ (inv_voc[ix.item()], cos.item()) for ix, cos in zip(topk_indices, topk_cos) ])
+        def nearest_neighbors(emb, voc, inv_voc, word, n_neighbors=5):
+            # Look up the embedding for the test word.
+            test_emb = emb.weight[voc[word]]
+            
+            # We'll use a cosine similarity function to find the most similar words.
+            sim_func = nn.CosineSimilarity(dim=1)
+            cosine_scores = sim_func(test_emb, emb.weight)
+            
+            # Find the positions of the highest cosine values.
+            near_nbr = cosine_scores.topk(n_neighbors+1)
+            topk_cos = near_nbr.values[1:]
+            topk_indices = near_nbr.indices[1:]
+            # NB: the first word in the top-k list is the query word itself!
+            # That's why we skip the first position in the code above.
+            
+            # Finally, map word indices back to strings, and put the result in a list.
+            return [ (inv_voc[ix.item()], f'{cos.item():.2f}') for ix, cos in zip(topk_indices, topk_cos) ]
+        # Load model
+        model = A1RNNModel.from_pretrained('trained_output')
+        print('Model loaded successfully.')
+        # Load tokenizer
+        tokenizer = load_tokenizer()
+        # Get the embedding layer from the model, and the vocabulary from the tokenizer.
+        emb = model.embedding
+        voc = tokenizer.vocab
+        inv_voc = get_i2t(voc)
+        # Test the nearest neighbor function on some words.
+        test_words = ['sweden', 'king']
+        for word in test_words:
+            if word in voc:
+                print(f'Nearest neighbors for "{word}": {nearest_neighbors(emb, voc, inv_voc, word)}')
+            else:
+                print(f'Word "{word}" not in vocabulary.')
+
+        # Results:
+        # Nearest neighbors for "sweden": [('netherlands', '0.38'), ('croatia', '0.37'), ('ba', '0.36'), ('esa', '0.35'), ('programmer', '0.35')]
+        # Nearest neighbors for "king": [('father', '0.40'), ('hope', '0.35'), ('owner', '0.34'), ('relatives', '0.34'), ('supporter', '0.32')]
 
 
         
