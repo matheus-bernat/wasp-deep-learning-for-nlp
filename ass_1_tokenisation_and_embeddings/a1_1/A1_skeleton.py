@@ -1,5 +1,4 @@
 
-from sklearn import neighbors
 import torch, nltk, pickle
 from torch import nn
 from collections import Counter
@@ -7,10 +6,9 @@ from transformers import BatchEncoding, PretrainedConfig, PreTrainedModel, Train
 from transformers.modeling_outputs import CausalLMOutput
 from datasets import load_dataset
 
-
 from torch.utils.data import DataLoader
 import numpy as np
-import sys, time, os
+import time
 
 
 ###
@@ -629,6 +627,22 @@ if __name__ == '__main__':
             
             # Finally, map word indices back to strings, and put the result in a list.
             return [ (inv_voc[ix.item()], f'{cos.item():.2f}') for ix, cos in zip(topk_indices, topk_cos) ]
+        
+
+        def plot_embeddings_pca(emb, inv_voc, words):
+            from sklearn.decomposition import TruncatedSVD
+            import matplotlib.pyplot as plt
+            vectors = np.vstack([emb.weight[inv_voc[w]].cpu().detach().numpy() for w in words])
+            vectors -= vectors.mean(axis=0)
+            twodim = TruncatedSVD(n_components=2).fit_transform(vectors)
+            plt.figure(figsize=(5,5))
+            plt.scatter(twodim[:,0], twodim[:,1], edgecolors='k', c='r')
+            for word, (x,y) in zip(words, twodim):
+                plt.text(x+0.02, y, word)
+            plt.axis('off')
+            plt.savefig('embeddings_pca.png')
+            plt.show()
+
         # Load model
         model = A1RNNModel.from_pretrained('trained_output')
         print('Model loaded successfully.')
@@ -645,6 +659,9 @@ if __name__ == '__main__':
                 print(f'Nearest neighbors for "{word}": {nearest_neighbors(emb, voc, inv_voc, word)}')
             else:
                 print(f'Word "{word}" not in vocabulary.')
+
+        plot_embeddings_pca(emb, voc, ['sweden', 'denmark', 'europe', 'africa', 'london', 'stockholm', 'large', 'small', 'great', 'black', '3', '7', '10', 'seven', 'three', 'ten', '1984', '2005', '2010'])
+        # Result: quite clear separate clusters of countries, numbers, and colors.
 
         # Results:
         # Nearest neighbors for "sweden": [('netherlands', '0.38'), ('croatia', '0.37'), ('ba', '0.36'), ('esa', '0.35'), ('programmer', '0.35')]
