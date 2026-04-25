@@ -19,11 +19,12 @@ def lowercase_tokenizer(text):
 
 # Task 1.2: Building the vocabulary.
 
-def build_vocab(train_file, max_voc_size=None, pad_token='<PAD>', unk_token='<UNK>', bos_token='<BOS>', eos_token='<EOS>') -> dict[str, int]:
+def build_vocab(train_file, tokenize_fun=lowercase_tokenizer, max_voc_size=None, pad_token='<PAD>', unk_token='<UNK>', bos_token='<BOS>', eos_token='<EOS>') -> dict[str, int]:
     """ Build a vocabulary from the given file, i.e. a mapping from token strings to integers.
 
         Args:
              train_file: The name of the file containing the training texts.
+             tokenize_fun: The function to tokenize the text.
              max_voc_size: The maximally allowed size of the vocabulary. If None, then there is no limit.
              pad_token:  The dummy string corresponding to padding.
              unk_token:  The dummy string corresponding to out-of-vocabulary tokens.
@@ -40,7 +41,7 @@ def build_vocab(train_file, max_voc_size=None, pad_token='<PAD>', unk_token='<UN
         text = f.read()
 
     # Tokenize the text into a list of tokens.
-    tokens = lowercase_tokenizer(text)
+    tokens = tokenize_fun(text)
 
     # Count the frequency of each token
     counter = Counter(tokens)
@@ -117,7 +118,7 @@ def build_tokenizer(train_file, tokenize_fun=lowercase_tokenizer, max_voc_size=N
     # TODO: build the vocabulary, possibly truncating it to max_voc_size if that is specified.
     # Then return a tokenizer object (implemented below).
 
-    vocab = build_vocab(train_file, max_voc_size, pad_token, unk_token, bos_token, eos_token)
+    vocab = build_vocab(train_file, tokenize_fun, max_voc_size, pad_token, unk_token, bos_token, eos_token)
 
     return A1Tokenizer(vocab, model_max_length, pad_token, unk_token, bos_token, eos_token)
 
@@ -126,7 +127,6 @@ class A1Tokenizer:
     """A minimal implementation of a tokenizer similar to tokenizers in the HuggingFace library."""
 
     def __init__(self, vocab, model_max_length=None, pad_token='<PAD>', unk_token='<UNK>', bos_token='<BOS>', eos_token='<EOS>'):
-        # TODO: store all values you need in order to implement __call__ below.
         self.vocab = vocab
         self.pad_token_id = vocab[pad_token]
         self.unk_token_id = vocab[unk_token]
@@ -144,7 +144,9 @@ class A1Tokenizer:
              return_tensors:  If None, then return lists; if 'pt', then return PyTorch tensors.
 
            Returns:
-             A BatchEncoding where the field `input_ids` stores the integer-encoded texts.
+             A BatchEncoding where the field `input_ids` stores the integer-encoded texts,
+             and `attention_mask` stores a mask indicating which tokens are real and which are paddings.
+
         """
         if return_tensors and return_tensors != 'pt':
             raise ValueError('Should be pt')
@@ -155,7 +157,7 @@ class A1Tokenizer:
         elif not isinstance(texts, list) or not all(isinstance(t, str) for t in texts):
             raise TypeError('texts must be a string or a list of strings')
         
-        # TODO: Your work here is to split the texts into words and map them to integer values.
+        # Split the texts into words and map them to integer values.
         max_length = 0
         list_of_ids = []
         for text in texts:
