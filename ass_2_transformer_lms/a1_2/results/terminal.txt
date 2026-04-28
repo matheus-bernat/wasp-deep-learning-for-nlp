@@ -1,0 +1,53 @@
+(venv) [x_mviei@node090 a1_2]$ python A2_skeleton.py 
+Tokenizer loaded. Vocabulary size: 10000.
+Train instances: 294118
+Validation instances: 35748
+Device: cuda
+Starting epoch 1/15...
+`loss_type=None` was set in the config but it is unrecognized. Using the default loss: `ForCausalLMLoss`.
+Epoch 1/15, Train Loss: 0.7304, training time: 2.09 minutes.
+Epoch 1/15, Validation Loss: 0.0568, validation time: 0.17 minutes.
+Starting epoch 2/15...
+Epoch 2/15, Train Loss: 0.0753, training time: 2.08 minutes.
+Epoch 2/15, Validation Loss: 0.0553, validation time: 0.17 minutes.
+Starting epoch 3/15...
+Epoch 3/15, Train Loss: 0.0614, training time: 2.09 minutes.
+Epoch 3/15, Validation Loss: 0.0546, validation time: 0.17 minutes.
+Starting epoch 4/15...
+Epoch 4/15, Train Loss: 0.0611, training time: 2.09 minutes.
+Epoch 4/15, Validation Loss: 0.0547, validation time: 0.17 minutes.
+Starting epoch 5/15...
+Epoch 5/15, Train Loss: 0.0609, training time: 2.09 minutes.
+Epoch 5/15, Validation Loss: 0.0548, validation time: 0.17 minutes.
+Starting epoch 6/15...
+Epoch 6/15, Train Loss: 0.0606, training time: 2.07 minutes.
+Epoch 6/15, Validation Loss: 0.0550, validation time: 0.18 minutes.
+Starting epoch 7/15...
+Epoch 7/15, Train Loss: 0.0618, training time: 2.07 minutes.
+Epoch 7/15, Validation Loss: 0.0545, validation time: 0.18 minutes.
+Starting epoch 8/15...
+Epoch 8/15, Train Loss: 0.0603, training time: 2.08 minutes.
+Epoch 8/15, Validation Loss: 0.0548, validation time: 0.18 minutes.
+Starting epoch 9/15...
+Epoch 9/15, Train Loss: 0.0604, training time: 2.07 minutes.
+Epoch 9/15, Validation Loss: 0.0549, validation time: 0.18 minutes.
+Starting epoch 10/15...
+Epoch 10/15, Train Loss: 0.0604, training time: 2.08 minutes.
+Epoch 10/15, Validation Loss: 0.0551, validation time: 0.18 minutes.
+Starting epoch 11/15...
+Epoch 11/15, Train Loss: 0.0602, training time: 2.08 minutes.
+Epoch 11/15, Validation Loss: 0.0550, validation time: 0.17 minutes.
+Starting epoch 12/15...
+Epoch 12/15, Train Loss: 0.0603, training time: 2.09 minutes.
+Epoch 12/15, Validation Loss: 0.0550, validation time: 0.17 minutes.
+Starting epoch 13/15...
+Epoch 13/15, Train Loss: 0.0602, training time: 2.10 minutes.
+Epoch 13/15, Validation Loss: 0.0550, validation time: 0.17 minutes.
+Starting epoch 14/15...
+Epoch 14/15, Train Loss: 0.0602, training time: 2.09 minutes.
+Epoch 14/15, Validation Loss: 0.0550, validation time: 0.17 minutes.
+Starting epoch 15/15...
+Epoch 15/15, Train Loss: 0.0602, training time: 2.08 minutes.
+Epoch 15/15, Validation Loss: 0.0549, validation time: 0.17 minutes.
+Saving to ./results.
+Writing model shards: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████| 1/1 [00:00<00:00, 15.99it/s]

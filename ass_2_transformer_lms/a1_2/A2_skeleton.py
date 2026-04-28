@@ -4,6 +4,11 @@ from torch import nn
 from transformers import PreTrainedModel, PretrainedConfig, TrainingArguments
 from transformers.modeling_outputs import CausalLMOutput
 
+import os
+import sys
+sys.path.insert(0, '../../ass_1_tokenisation_and_embeddings/a1_1')
+from A1_skeleton import load_tokenizer, get_dataset, A1Trainer, A1Tokenizer, get_i2t
+
 
 class A2ModelConfig(PretrainedConfig):
     """Configuration object that stores hyperparameters that define the Transformer language model."""
@@ -11,6 +16,7 @@ class A2ModelConfig(PretrainedConfig):
                  num_hidden_layers=None,
                  rope_theta=None, hidden_act='silu', max_position_embeddings=None, rms_norm_eps=None, **kwargs):
         super().__init__(**kwargs)
+        self.loss_type = "ForCausalLM" # the type of the loss of next-token prediction, HuggingFace name standard
         self.vocab_size = vocab_size
         self.hidden_size = hidden_size
         self.max_position_embeddings = max_position_embeddings
@@ -42,7 +48,7 @@ class A2MLP(nn.Module):
 
 
 # Sanity check:
-config = A2ModelConfig(
+test_config = A2ModelConfig(
     vocab_size=10000,
     hidden_size=6,
     intermediate_size=11,
@@ -53,7 +59,7 @@ config = A2ModelConfig(
     max_position_embeddings=512,
     rms_norm_eps=1e-6,
 )
-layer = A2MLP(config)
+layer = A2MLP(test_config)
 random_tensor = torch.tensor( # the first dimension has size 4, the second has size 3, the last has size 6
     [
         [
@@ -99,7 +105,7 @@ class A2RMSNorm(nn.Module):
     
 
 # Sanity check --------------
-config = A2ModelConfig(
+test_config = A2ModelConfig(
     vocab_size=10000,
     hidden_size=6,
     intermediate_size=11,
@@ -110,7 +116,7 @@ config = A2ModelConfig(
     max_position_embeddings=512,
     rms_norm_eps=1e-6,
 )
-layer = A2RMSNorm(config)
+layer = A2RMSNorm(test_config)
 # use the same random tensor as before
 output = layer(random_tensor)
 # print(output.shape) # The output should have the same shape as the input, i.e. (4, 3, 6).
@@ -142,6 +148,7 @@ class A2Attention(nn.Module):
         self.W_o = nn.Linear(config.hidden_size, config.hidden_size)
         # TODO: set up normalizers here
         self.normaliser = A2RMSNorm(config)
+        self.config = config
 
     def forward(self, hidden_states, rope_rotations):
         # Pass hidden states through linear layers to get queries, keys, and values.
@@ -152,7 +159,7 @@ class A2Attention(nn.Module):
         # Divide the hidden states into multiple heads, so normalisation and attention are computed in each head separately.
         batch_size = hidden_states.shape[0]
         seq_length = hidden_states.shape[1]
-        dim_per_head = hidden_states.shape[2] // config.num_attention_heads # where hidden_states.shape[2] is the hidden size
+        dim_per_head = hidden_states.shape[2] // self.config.num_attention_heads # where hidden_states.shape[2] is the hidden size
         
         # Long explanation of the reshape and transpose operations below:
         """
@@ -193,9 +200,9 @@ class A2Attention(nn.Module):
         q = self.normaliser(q)
         k = self.normaliser(k)
 
-        q = q.view(batch_size, seq_length, config.num_attention_heads, dim_per_head).transpose(1, 2) # first reshape to (batch_size, seq_length, num_attention_heads, dim_per_head) then transpose to (batch_size, num_attention_heads, seq_length, dim_per_head)
-        k = k.view(batch_size, seq_length, config.num_attention_heads, dim_per_head).transpose(1, 2)
-        v = v.view(batch_size, seq_length, config.num_attention_heads, dim_per_head).transpose(1, 2)
+        q = q.view(batch_size, seq_length, self.config.num_attention_heads, dim_per_head).transpose(1, 2) # first reshape to (batch_size, seq_length, num_attention_heads, dim_per_head) then transpose to (batch_size, num_attention_heads, seq_length, dim_per_head)
+        k = k.view(batch_size, seq_length, self.config.num_attention_heads, dim_per_head).transpose(1, 2)
+        v = v.view(batch_size, seq_length, self.config.num_attention_heads, dim_per_head).transpose(1, 2)
 
         if rope_rotations is not None:
             q, k = apply_rotary_pos_emb(q, k, rope_rotations)
@@ -210,7 +217,7 @@ class A2Attention(nn.Module):
         scaled_dot_product_attention_output = scaled_dot_product_attention_output.transpose(1, 2).contiguous() 
         # (batch_size, seq_length, num_attention_heads, dim_per_head)
 
-        scaled_dot_product_attention_output = scaled_dot_product_attention_output.view(batch_size, seq_length, config.hidden_size)
+        scaled_dot_product_attention_output = scaled_dot_product_attention_output.view(batch_size, seq_length, self.config.hidden_size)
         # (batch_size, seq_length, hidden_size)
 
         # For this attention computation, we could have simply used PyTorch built-in sdpa function:
@@ -318,7 +325,9 @@ class A2RotaryEmbedding(nn.Module):
         head_dim = config.hidden_size // config.num_attention_heads
         partial_rotary_factor = 1.0
         dim = int(head_dim * partial_rotary_factor)
-        self.inv_freq = 1.0 / (rope_theta ** (torch.arange(0, dim, 2, dtype=torch.int64).to(device=device, dtype=torch.float) / dim))
+        inv_freq = 1.0 / (rope_theta ** (torch.arange(0, dim, 2, dtype=torch.int64).to(device=device, dtype=torch.float) / dim))
+        self.register_buffer("inv_freq", inv_freq, persistent=False)  # NOTE: Claude added this, otherwise NotImplementedError: Cannot copy out of meta tensor; no data!
+
 
     @torch.no_grad()
     def forward(self, x):
@@ -335,7 +344,7 @@ class A2RotaryEmbedding(nn.Module):
             return cos, sin
 
 # Sanity check: take the already created tensor and apply the MHA to it and make sure it doesn't crash --------------
-config = A2ModelConfig(
+test_config = A2ModelConfig(
     vocab_size=10000,
     hidden_size=6,
     intermediate_size=11,
@@ -346,57 +355,180 @@ config = A2ModelConfig(
     max_position_embeddings=512,
     rms_norm_eps=1e-6,
 )
-# layer = A2Attention(config)
-# layer = A2DecoderLayer(config)
-# layer = A2Transformer(config)
-# random_tensor = torch.randint(0, config.vocab_size, (4, 3))  # (batch_size=4, seq_length=3) integer token IDs
+# layer = A2Attention(test_config)
+# layer = A2DecoderLayer(test_config)
+# layer = A2Transformer(test_config)
+# random_tensor = torch.randint(0, test_config.vocab_size, (4, 3))  # (batch_size=4, seq_length=3) integer token IDs
 # output, _ = layer(random_tensor)
 # print(output.shape) # the output should be (4, 3, vocab_size), i.e. logits over vocab for each token.
 # ---------------------------
 
+
+# Task 3.2: generate text
+from torch.distributions import Categorical
+
+def generate(model, tokenizer, prompt, max_length=100, temperature=1.0, topk=None):
+    """
+    Generate text using random sampling with optional temperature scaling and top-K truncation.
+    
+    Args:
+        model: the language model
+        tokenizer: tokenizer to encode/decode text
+        prompt: string prompt to condition generation on
+        max_length: max number of new tokens to generate
+        temperature: >1 makes distribution more uniform (more random), <1 makes it more peaked (more greedy)
+        topk: if set, only sample from the top-k most probable tokens
+    """    
+    # Encode the prompt into token IDs
+    input_ids = tokenizer(prompt, return_tensors='pt').input_ids
+    input_ids = input_ids.to(next(model.parameters()).device) # NOTE: this moves the inputs ids to the same device as the model parameters, which is necessary for the forward pass to work.
+
+    eos_token_id = tokenizer.eos_token_id
+
+    with torch.no_grad():
+        for _ in range(max_length):
+            # Forward pass — get logits for all positions
+            output = model(input_ids)
+            # Take the logits for the very last token: shape (vocab_size,)
+            next_token_logits = output.logits[0, -1, :]  # (vocab_size,)
+
+            # Apply temperature scaling
+            next_token_logits = next_token_logits / temperature
+
+            # Top-K truncation: zero out all logits except the top-k
+            if topk is not None:
+                topk_values, topk_indices = torch.topk(next_token_logits, k=topk)
+                # Build a new logits tensor filled with -inf, then fill in the top-k values
+                filtered_logits = torch.full_like(next_token_logits, float('-inf'))
+                filtered_logits.scatter_(0, topk_indices, topk_values)
+                next_token_logits = filtered_logits
+
+            # Sample from the (possibly truncated) distribution
+            distribution = Categorical(logits=next_token_logits)
+            next_token_id = distribution.sample()  # scalar tensor
+
+            # Append the new token and check for EOS
+            input_ids = torch.cat([input_ids, next_token_id.view(1, 1)], dim=1)
+            if eos_token_id is not None and next_token_id.item() == eos_token_id:
+                break
+
+    # Decode the full sequence (prompt + generated tokens)
+    generated_text = tokenizer.decode(input_ids[0], skip_special_tokens=True)
+    return generated_text
+
+
 # ====================================================================================
 # =================================== Train the model ================================
 # ====================================================================================
-import sys
-sys.path.insert(0, '../../ass_1_tokenisation_and_embeddings/a1_1')
-from A1_skeleton import load_tokenizer, get_dataset, A1Trainer, A1Tokenizer
+
 
 
 if __name__ == '__main__':
-    # Train:
+
     tokenizer = load_tokenizer()
     tokenizer.model_max_length = 256
-    config = A2ModelConfig(
-        vocab_size=len(tokenizer),
-        hidden_size=128,
-        intermediate_size=256,
-        num_attention_heads=8,
-        num_hidden_layers=3,
-        rope_theta=100000.0,
-        hidden_act='silu',
-        max_position_embeddings=256,
-        rms_norm_eps=1e-6,
-    )
-    model = A2Transformer(config)
 
-    training_args = TrainingArguments(
-        optim='adamw_torch',
-        use_cpu=False,
-        eval_strategy='epoch',
-        output_dir='./results',
-        num_train_epochs=3,
-        per_device_eval_batch_size=64,
-        per_device_train_batch_size=64,
-        logging_dir='./logs',
-        learning_rate=0.001,
-    )
+    what_to_do = 'generate'
 
-    dataset = get_dataset(use_subset=True)
-    trainer = A1Trainer(model, 
-                        training_args, 
-                        dataset['train'], 
-                        dataset['val'], 
-                        tokenizer
-                        )
-    trainer.train()
-    
+    if what_to_do == 'train':
+        # Train:
+        config = A2ModelConfig(
+            vocab_size=len(tokenizer),
+            hidden_size=128,
+            intermediate_size=256,
+            num_attention_heads=8,
+            num_hidden_layers=3,
+            rope_theta=100000.0,
+            hidden_act='silu',
+            max_position_embeddings=256,
+            rms_norm_eps=1e-6,
+        )
+        model = A2Transformer(config)
+
+        training_args = TrainingArguments(
+            optim='adamw_torch',
+            use_cpu=False,
+            eval_strategy='epoch',
+            output_dir='./results',
+            num_train_epochs=10,
+            per_device_eval_batch_size=64,
+            per_device_train_batch_size=64,
+            learning_rate=0.0001,
+            lr_scheduler_type='linear'
+        )
+
+        dataset = get_dataset(use_subset=False)
+        trainer = A1Trainer(model, 
+                            training_args, 
+                            dataset['train'], 
+                            dataset['val'], 
+                            tokenizer
+                            )
+        trainer.train()
+    elif what_to_do == 'evaluate':
+        model = A2Transformer.from_pretrained('./results')
+        print(f"Loaded model")
+        text = "She lives in San"
+        input_ids = tokenizer(text, return_tensors='pt').input_ids
+        model.eval()
+        with torch.no_grad():
+            output = model(input_ids)
+        print(f"Output shape: {output.logits.shape}")
+
+        # Use argmax to get the predicted token ID
+        predicted_token_ids = torch.argmax(output.logits, dim=-1)
+        i2t = get_i2t(tokenizer.vocab)
+        predicted_tokens = [[i2t[token_id.item()] for token_id in batch] for batch in predicted_token_ids]
+        print('Predicted tokens:', predicted_tokens)
+
+    elif what_to_do == 'generate':
+        print("Generating text...")
+
+        # My model
+        # model = A2Transformer.from_pretrained('./results')
+
+        # Olmo2
+        from transformers import AutoTokenizer, AutoModelForCausalLM
+        local_dir = '../../../OLMo-2-0425-1B'
+        tokenizer = AutoTokenizer.from_pretrained(local_dir)
+        model = AutoModelForCausalLM.from_pretrained(local_dir)
+
+        model.eval()
+
+        prompts = [
+            'In natural language processing, a Transformer',
+            'Is Stockholm the capital of Sweden? Answer yes or no. The answer is',
+            'Write a Python program that reverses a list.',
+        ]
+
+        for prompt in prompts:
+            print(f"\nPrompt: {prompt}")
+            print("temp=1.0, topk=None :", generate(model, tokenizer, prompt, max_length=50, temperature=1.0))
+        
+        # Olmo2 outputs:
+        # Prompt: In natural language processing, a Transformer
+        # temp=1.0, topk=None : In natural language processing, a Transformer is a self-attention mechanism. It can be found in two different types: sequence-to-sequence and transfer learning Transformer. Both the approaches provides better results.
+
+        # Depending on the type of problem you are trying to solve, one of these methods might be
+
+        # Prompt: Is Stockholm the capital of Sweden? Answer yes or no. The answer is
+        # temp=1.0, topk=None : Is Stockholm the capital of Sweden? Answer yes or no. The answer is yes. I supposed that I have to go there.
+
+        # How did you/I do? Answer yes or no. I/we went there.
+
+        # Can anyone help me? Answer yes or no. No. Ok. Thank you.
+
+        # Are there many tourists in Germany
+
+        # Prompt: Write a Python program that reverses a list.
+        # temp=1.0, topk=None : Write a Python program that reverses a list. Unroll each nested list via reverse, then
+        # return old_list reversed
+
+        # Code:
+        # def reverselist(old_list):
+        #     '''Original list of lists'''
+        #     new_list = reverse(old_list, reverse)
+        #     # Unroll new list by reversing each nested
+
+
+
