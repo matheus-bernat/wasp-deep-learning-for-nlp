@@ -33,6 +33,7 @@ class A2MLP(nn.Module):
     def __init__(self, config):
         super().__init__()
         assert(config.hidden_act == 'silu')
+        
         # TODO: initalize components here
         self.linear_right = nn.Linear(in_features=config.hidden_size, out_features=config.intermediate_size)
         self.linear_left = nn.Linear(in_features=config.hidden_size, out_features=config.intermediate_size)
