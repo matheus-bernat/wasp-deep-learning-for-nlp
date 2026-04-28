@@ -196,6 +196,20 @@ class A1Tokenizer:
         """Return the size of the vocabulary."""
         return len(self.vocab)
     
+    def decode(self, token_ids, skip_special_tokens=True):
+        i2t = get_i2t(self.vocab)
+        special_ids = {self.pad_token_id, self.unk_token_id, self.bos_token_id, self.eos_token_id}
+        
+        tokens = []
+        for id in token_ids:
+            if isinstance(id, torch.Tensor):
+                id = id.item()
+            if skip_special_tokens and id in special_ids:
+                continue
+            tokens.append(i2t.get(id, '<UNK>'))
+        
+        return ' '.join(tokens)
+    
     def save(self, filename):
         """Save the tokenizer to the given file."""
         with open(filename, 'wb') as f:
